@@ -4,13 +4,14 @@ import com.bitian.spring.*;
 
 @Component
 @Scope
-public class UserService implements BeanNameAware, InitializingBean {
+public class UserService implements BeanNameAware, InitializingBean,UserInterface {
 
     @Autowired
     private OrderService orderService;
 
     private String name;
 
+    @Override
     public void test(){
         System.err.println(orderService+name);
     }

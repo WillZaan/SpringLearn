@@ -5,6 +5,8 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -12,7 +14,9 @@ public class BitianApplicationContext {
 
     private Class config;
     private Map<String,BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
+    //单例池
     private Map<String,Object> singletonBeans = new ConcurrentHashMap<>();
+    private List<BeanPostProcessor> beanPostProcessorList = new ArrayList<>();
 
     public BitianApplicationContext(Class configClass){
         this.config = configClass;
@@ -44,6 +48,12 @@ public class BitianApplicationContext {
                             clazz = classLoader.loadClass(className);
                             if (clazz.isAnnotationPresent(Component.class)) {
 
+                                //检查这个类是由这个接口派送的吗
+                                if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
+                                    BeanPostProcessor o = (BeanPostProcessor)clazz.newInstance();
+                                    beanPostProcessorList.add(o);
+                                }
+
                                 //Bean  扫描过程中并不会直接把bean创建出来
                                 BeanDefinition beanDefinition = new BeanDefinition();
                                 beanDefinition.setType(clazz);
@@ -62,11 +72,16 @@ public class BitianApplicationContext {
                             }
                         } catch (ClassNotFoundException e) {
                             e.printStackTrace();
+                        } catch (InstantiationException e) {
+                            e.printStackTrace();
+                        } catch (IllegalAccessException e) {
+                            e.printStackTrace();
                         }
                     }
                 }
             }
         }
+
         //创建单例bean
         for (String beanName : beanDefinitionMap.keySet()) {
             BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
@@ -81,6 +96,7 @@ public class BitianApplicationContext {
     private Object createBean(String beanName,BeanDefinition beanDefinition){
         Class type = beanDefinition.getType();
         try {
+            //这里是创建普通的对象，不是代理对象
             Object instance = type.getConstructor().newInstance();
 
             //依赖注入
@@ -88,7 +104,7 @@ public class BitianApplicationContext {
                 if (declaredField.isAnnotationPresent(Autowired.class)) {
                     //赋值
                     declaredField.setAccessible(true);
-                    //先type 后 name
+                    //题外话：先type 后 name，type可能只有一种但是对应的name有多个，所以再通过name获取
                     declaredField.set(instance,getBean(declaredField.getName()));
                 }
             }
@@ -98,9 +114,18 @@ public class BitianApplicationContext {
                 ((BeanNameAware)instance).setBeanName(beanName);
             }
 
+            //初始化前 PostConstruct
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                beanPostProcessor.postProcessBeforeInitialization(beanName,instance);
+            }
+
             //初始化
             if (instance instanceof InitializingBean) {
                 ((InitializingBean)instance).afterPropertiesSet();
+            }
+            //初始化后  Aop--->代理对象
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                instance = beanPostProcessor.postProcessAfterInitialization(beanName, instance);
             }
 
             //初始化后 BeanPostProcessor AOP

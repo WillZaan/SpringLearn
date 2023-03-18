@@ -6,7 +6,7 @@ public class Test {
 
     public static void main(String[] args) {
         BitianApplicationContext context = new BitianApplicationContext(AppConfig.class);
-        UserService userService = (UserService) context.getBean("userService");
+        UserInterface userService = (UserInterface) context.getBean("userService");
         userService.test();
     }
 }
